@@ -164,6 +164,7 @@ class CreateTableStatement(Node):
     as_select: Optional[Node] = None
     temporary: bool = False
     without_rowid: bool = False
+    strict: bool = False
     if_not_exists: bool = False
 
     def as_string(self, *, p: bool) -> str:
@@ -200,6 +201,9 @@ class CreateTableStatement(Node):
         builder.append(")")
         if self.without_rowid:
             builder.append(" WITHOUT ROWID")
+        if self.strict:
+            builder.append(" STRICT")    
+
 
         return "".join(builder)
 

@@ -446,6 +446,7 @@ SQL_KEYWORDS = {
     "SAVEPOINT",
     "SELECT",
     "SET",
+    "STRICT",
     "TABLE",
     "TEMP",
     "TEMPORARY",

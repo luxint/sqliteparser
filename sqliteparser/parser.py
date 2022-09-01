@@ -191,16 +191,23 @@ class Parser:
             if token.type == TokenType.RIGHT_PARENTHESIS:
                 break
 
-        token = self.lexer.advance()
-        if token is not None:
-            if token.type == TokenType.KEYWORD and token.value == "WITHOUT":
-                self.lexer.advance(expecting=[(TokenType.IDENTIFIER, "ROWID")])
-                without_rowid = True
+              
+        without_rowid =  False
+        strict=False        
+        while True: 
+            token = self.lexer.advance()  
+            if token is not None:
+                if token.type == TokenType.KEYWORD and token.value == "WITHOUT":
+                    self.lexer.advance(expecting=[(TokenType.IDENTIFIER, "ROWID")])
+                    without_rowid = True
+                elif token.type == TokenType.KEYWORD and token.value == "STRICT":
+                    strict = True
+                self.lexer.advance()  
+                token = self.lexer.check([TokenType.COMMA,TokenType.SEMICOLON,TokenType.EOF])
+                if token.type !=TokenType.COMMA:
+                    break
             else:
-                self.lexer.push(token)
-                without_rowid = False
-        else:
-            without_rowid = False
+                break
 
         return ast.CreateTableStatement(
             name=name,
@@ -209,6 +216,7 @@ class Parser:
             as_select=None,
             temporary=temporary,
             without_rowid=without_rowid,
+            strict=strict,
             if_not_exists=if_not_exists)    
 
     @debuggable

@@ -887,6 +887,58 @@ class ParseCreateTests(unittest.TestCase):
         )
 
 
+    def test_parse_create_table_strict(self):
+        sql = """
+        CREATE TABLE people(
+          name TEXT,
+          age INTEGER
+        ) STRICT;
+        """
 
+        self.assertEqual(
+            parse(sql),
+            [
+                ast.CreateTableStatement(
+                    name="people",
+                    columns=[
+                        ast.Column(
+                            name="name", definition=ast.ColumnDefinition(type="TEXT")
+                        ),
+                        ast.Column(
+                            name="age", definition=ast.ColumnDefinition(type="INTEGER")
+                        ),
+                    ],
+                    strict=True,
+                ),
+            ],
+        )
+
+
+    def test_parse_create_table_strict_without_rowid(self):
+        sql = """
+        CREATE TABLE people(
+          name TEXT,
+          age INTEGER
+        ) STRICT, WITHOUT ROWID;
+        """
+
+        self.assertEqual(
+            parse(sql),
+            [
+                ast.CreateTableStatement(
+                    name="people",
+                    columns=[
+                        ast.Column(
+                            name="name", definition=ast.ColumnDefinition(type="TEXT")
+                        ),
+                        ast.Column(
+                            name="age", definition=ast.ColumnDefinition(type="INTEGER")
+                        ),
+                    ],
+                    strict=True,
+                    without_rowid= True
+                ),
+            ],
+        )
 
 
