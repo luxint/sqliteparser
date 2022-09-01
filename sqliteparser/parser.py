@@ -1,3 +1,5 @@
+from ast import Not
+from functools import partialmethod
 from typing import List, Optional, Union
 
 from . import ast
@@ -5,12 +7,12 @@ from .exceptions import SQLiteParserError, SQLiteParserImpossibleError
 from .lexer import Lexer, TokenType
 
 
-def parse(program: str, *, debug: bool = False) -> List[ast.Node]:
+def parse(program: str, *, debug: bool = False, verbatim: bool = False) -> List[ast.Node]:
     """
     Parse the SQL program into a list of AST objects.
     """
     lexer = Lexer(program)
-    parser = Parser(lexer, debug=debug)
+    parser = Parser(lexer, debug=debug, verbatim = verbatim)
     return parser.parse()
 
 
@@ -64,10 +66,11 @@ class Parser:
     debug: bool
     debug_indent: int
 
-    def __init__(self, lexer: Lexer, *, debug: bool = False) -> None:
+    def __init__(self, lexer: Lexer, *, debug: bool = False, verbatim: bool = False) -> None:
         self.lexer = lexer
         self.debug = debug
         self.debug_indent = 0
+        self.verbatim = verbatim
 
     def parse(self) -> List[ast.Node]:
         statements = []
@@ -93,7 +96,7 @@ class Parser:
     def match_statement(self) -> ast.Node:
         token = self.lexer.current()
         if token.type == TokenType.KEYWORD:
-            if token.value == "CREATE":
+            if token.value == "CREATE":  
                 return self.match_create_statement()
             elif token.value == "SELECT":
                 return self.match_select_statement()
@@ -102,15 +105,37 @@ class Parser:
         else:
             raise SQLiteParserError(f"unexpected token type: {token.type}")
 
+
+
+
+
+        
+
+
+
+
+
     @debuggable
-    def match_create_statement(self) -> ast.CreateTableStatement:
-        token = self.lexer.advance(expecting=["TABLE", "TEMPORARY", "TEMP"])
+    def match_create_statement(self) -> Union[
+                                            ast.CreateTableStatement,
+                                            ast.CreateIndexStatement,
+                                            ast.CreateTriggerStatement,
+                                            ast.CreateViewStatement,
+                                            ast.CreateVirtualTableStatement]:
+        token = self.lexer.advance(expecting=["TABLE", "TEMPORARY", "TEMP","UNIQUE","INDEX","TRIGGER","VIEW","VIRTUAL"])
+        temporary = False
+        unique = False
+        virtual = False
         if token.value in ("TEMPORARY", "TEMP"):
             temporary = True
-            self.lexer.advance(expecting=["TABLE"])
-        else:
-            temporary = False
-
+            self.lexer.advance(expecting=["TABLE","TRIGGER","VIEW"])
+        elif token.value == "UNIQUE":
+            unique = True
+            self.lexer.advance(expecting=["INDEX"])
+        elif token.value == "VIRTUAL":
+            virtual = True
+            self.lexer.advance(expecting=["TABLE"])     
+        type = self.lexer.current_token.value 
         token = self.lexer.advance(expecting=["IF", TokenType.IDENTIFIER, "TEMP"])
         if token.value == "IF":
             self.lexer.advance(expecting=["NOT"])
@@ -122,15 +147,30 @@ class Parser:
             name_token = token
 
         token = self.lexer.advance(
-            expecting=[TokenType.DOT, TokenType.LEFT_PARENTHESIS]
-        )
+            expecting=[TokenType.DOT, TokenType.LEFT_PARENTHESIS,TokenType.KEYWORD])
         if token.type == TokenType.DOT:
             table_name_token = self.lexer.advance(expecting=[TokenType.IDENTIFIER])
             name = ast.TableName(name_token.value, table_name_token.value)
-            self.lexer.advance(expecting=[TokenType.LEFT_PARENTHESIS])
+            self.lexer.advance(expecting=[TokenType.LEFT_PARENTHESIS,TokenType.KEYWORD])
         else:
             name = name_token.value
 
+        if type == "TABLE":
+            if virtual:
+                return self.match_create_virtual_table_statement(if_not_exists=if_not_exists,name=name)
+            else:    
+                return self.match_create_table_statement(if_not_exists=if_not_exists,temporary=temporary,name=name)
+        elif type == "INDEX":
+            return self.match_create_index_statement(if_not_exists=if_not_exists,unique=unique,name=name)
+        elif type == "TRIGGER":
+            return self.match_create_trigger_statement(if_not_exists=if_not_exists, name=name)
+        elif type == "VIEW":
+            return self.match_create_view_statement(if_not_exists=if_not_exists, name=name)
+        else:
+            raise SQLiteParserError(f"unknown type :{type}")    
+
+    @debuggable
+    def match_create_table_statement(self, if_not_exists, temporary, name) -> ast.CreateTableStatement:
         columns = []
         constraints: List[ast.BaseConstraint] = []
         while True:
@@ -169,8 +209,49 @@ class Parser:
             as_select=None,
             temporary=temporary,
             without_rowid=without_rowid,
+            if_not_exists=if_not_exists)    
+
+    @debuggable
+    def match_create_index_statement(self, if_not_exists, unique, name) -> ast.CreateIndexStatement:
+        self.lexer.check(["ON"])
+        token = self.lexer.advance()
+        table=token.value
+        self.lexer.advance(expecting=[TokenType.LEFT_PARENTHESIS])
+        self.lexer.advance()
+        columns = self.match_identifier_list()
+        self.lexer.check([TokenType.RIGHT_PARENTHESIS])  
+        token = self.lexer.advance(expecting=[TokenType.SEMICOLON,TokenType.KEYWORD])
+        if token.type == TokenType.SEMICOLON:
+            where= None
+        else:    
+            self.lexer.check(['WHERE'])
+            start_index = self.lexer.index
+            self.lexer.advance()
+            where = self.match_expression(verbatim=self.verbatim, start_index=start_index)
+   
+        return ast.CreateIndexStatement(
+            name=name,
             if_not_exists=if_not_exists,
-        )
+            table=table,
+            columns=columns,
+            unique=unique,
+            where=where)       
+
+    @debuggable
+    def match_create_virtual_table_statement(self, if_not_exists, name) -> ast.CreateVirtualTableStatement:
+        raise NotImplementedError('Create virtual table is not yet implemented')
+
+    @debuggable
+    def match_create_trigger_statement(self, if_not_exists, name) -> ast.CreateTriggerStatement:
+        raise NotImplementedError('Create trigger is not yet implemented')
+
+    @debuggable
+    def match_create_view_statement(self, if_not_exists, name) -> ast.CreateViewStatement:
+        raise NotImplementedError('create view is not yet implemented')
+
+
+
+
 
     @debuggable
     def match_select_statement(self) -> ast.SelectStatement:
@@ -495,8 +576,9 @@ class Parser:
     def match_check_constraint(self) -> ast.CheckConstraint:
         self.lexer.check(["CHECK"])
         self.lexer.advance(expecting=[TokenType.LEFT_PARENTHESIS])
+        start_index=self.lexer.index
         self.lexer.advance()
-        expr = self.match_expression()
+        expr = self.match_expression(verbatim=self.verbatim, start_index=start_index)
         self.lexer.check([TokenType.RIGHT_PARENTHESIS])
         self.lexer.advance()
         return ast.CheckConstraint(expr)
@@ -543,8 +625,9 @@ class Parser:
             self.lexer.advance(expecting=["AS"])
 
         self.lexer.advance(expecting=[TokenType.LEFT_PARENTHESIS])
+        start_index=self.lexer.index
         self.lexer.advance()
-        e = self.match_expression()
+        e = self.match_expression(verbatim=self.verbatim,start_index=start_index)
         self.lexer.check([TokenType.RIGHT_PARENTHESIS])
 
         token = self.lexer.advance()
@@ -578,8 +661,9 @@ class Parser:
 
         # TODO(2021-05-05): Merge this with match_prefix?
         if token.type == TokenType.LEFT_PARENTHESIS:
+            start_index=self.lexer.index
             self.lexer.advance()
-            e = self.match_expression()
+            e = self.match_expression(verbatim=self.verbatim, start_index=start_index)
             self.lexer.check([TokenType.RIGHT_PARENTHESIS])
             self.lexer.advance()
             return e
@@ -635,7 +719,35 @@ class Parser:
             raise SQLiteParserImpossibleError(strategy)
 
     @debuggable
-    def match_expression(self, precedence: int = -1) -> ast.Expression:
+    def match_expression(self, precedence: int = -1, verbatim = False,start_index=0) -> Union[ast.Expression,ast.String]:
+        
+        if verbatim:
+            level = 0
+            prev_index=self.lexer.index
+            while True:
+                      
+                if self.lexer.current_token.type == TokenType.RIGHT_PARENTHESIS:
+                    if level == 0:      
+                        break
+                    else:
+                        level -= 1
+                        if level < 0:
+                            raise SQLiteParserError('unbalanced parenthesis')
+
+                elif self.lexer.current_token.type == TokenType.LEFT_PARENTHESIS:
+                    level += 1            
+                prev_index=self.lexer.index
+                self.lexer.advance()
+                if self.lexer.current_token.type == TokenType.SEMICOLON:     
+                    break  
+                if self.lexer.done() :
+                    if level == 0:
+                        break
+                    else:                
+                        raise SQLiteParserError('unbalanced parenthesis')
+            return ast.String(self.lexer.program[start_index:prev_index].rstrip())    
+
+        
         left = self.match_prefix()
 
         while True:
