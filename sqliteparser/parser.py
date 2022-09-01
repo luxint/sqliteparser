@@ -200,7 +200,7 @@ class Parser:
                 if token.type == TokenType.KEYWORD and token.value == "WITHOUT":
                     self.lexer.advance(expecting=[(TokenType.IDENTIFIER, "ROWID")])
                     without_rowid = True
-                elif token.type == TokenType.KEYWORD and token.value == "STRICT":
+                elif token.type == TokenType.IDENTIFIER and token.value == "STRICT":
                     strict = True
                 self.lexer.advance()  
                 token = self.lexer.check([TokenType.COMMA,TokenType.SEMICOLON,TokenType.EOF])
