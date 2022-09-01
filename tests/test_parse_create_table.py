@@ -1,3 +1,4 @@
+from tabnanny import verbose
 import unittest
 
 from sqliteparser import ast, parse
@@ -942,3 +943,63 @@ class ParseCreateTests(unittest.TestCase):
         )
 
 
+
+    def test_parse_create_table_statement_with_table_check_constraint(self):
+        sql = """
+        CREATE TABLE people(
+          name TEXT ,
+          CHECK(name != '')
+        );
+        """
+
+        self.assertEqual(
+            parse(sql),
+            [
+                ast.CreateTableStatement(
+                    name="people",
+                    columns=[
+                        ast.Column(
+                            name="name",
+                            definition=ast.ColumnDefinition(
+                                type="TEXT"
+
+                            ),
+                        ),
+                    ],
+                    constraints=[
+                                    ast.CheckConstraint(
+                                        ast.Infix(
+                                            "!=",
+                                            ast.Identifier("name"),
+                                            ast.String(""),
+                                        )
+                                    )
+                                ],
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            parse(sql,verbatim=True),
+            [
+                ast.CreateTableStatement(
+                    name="people",
+                    columns=[
+                        ast.Column(
+                            name="name",
+                            definition=ast.ColumnDefinition(
+                                type="TEXT"
+
+                            ),
+                        ),
+                    ],
+                    constraints=[
+                                    ast.CheckConstraint(
+                                        ast.String(value="name != ''"
+                                            
+                                        )
+                                    )
+                                ],
+                ),
+            ],
+        )

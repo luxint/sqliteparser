@@ -275,7 +275,9 @@ class Parser:
         elif token.type == TokenType.KEYWORD and token.value == "PRIMARY":
             return self.match_primary_key_table_constraint()
         elif token.type == TokenType.KEYWORD and token.value == "UNIQUE":
-            return self.match_unique_table_constraint()    
+            return self.match_unique_table_constraint()  
+        elif token.type == TokenType.KEYWORD and token.value == "CHECK":
+            return self.match_check_constraint()        
         elif token.type == TokenType.IDENTIFIER or token.type == TokenType.KEYWORD:
             return self.match_column()
         else:
